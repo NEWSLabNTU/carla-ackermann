@@ -1,0 +1,11 @@
+[package]
+name = "carla-ackermann"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+carla = "0.5.0"
+noisy_float = "0.2.0"
+pid = "3.0.0"
