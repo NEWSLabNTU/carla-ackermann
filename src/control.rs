@@ -1,50 +1,62 @@
-use carla::rpc::VehiclePhysicsControl;
-use pid::Pid;
-
 use crate::{
-    constants::{FULL_STOP_SPEED_MS, INTERNAL_ACCEL_MS2, STAND_STILL_SPEED_MS},
+    accel_control::{AccelControl, AccelController, AccelControllerInit},
+    constants::FULL_STOP_SPEED_MS,
     physics::VehiclePhysics,
+    speed_control::{SpeedControl, SpeedController, SpeedControllerInit},
+    steer_control::SteerController,
 };
+use carla::rpc::VehiclePhysicsControl;
 
 #[derive(Debug, Clone)]
-pub struct Restrictions {
+pub struct ControllerInit {
+    pub physics_control: VehiclePhysicsControl,
+    pub speed_controller: SpeedControllerInit,
+    pub accel_controller: AccelControllerInit,
     pub max_steering_angle: f64,
-    pub max_speed: f64,
-    pub max_accel: f64,
-    pub min_accel: f64,
-    pub max_decel: f64,
-    pub max_pedal: f64,
+}
+
+impl ControllerInit {
+    pub fn build(&self) -> Controller {
+        let Self {
+            ref physics_control,
+            ref speed_controller,
+            ref accel_controller,
+            max_steering_angle,
+        } = *self;
+
+        Controller {
+            measurement: Measurement::default(),
+            physics_control: physics_control.clone(),
+            speed_controller: speed_controller.build(),
+            accel_controller: accel_controller.build(),
+            steer_controller: SteerController::new(max_steering_angle),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Controller {
+    measurement: Measurement,
+    physics_control: VehiclePhysicsControl,
+    speed_controller: SpeedController,
+    accel_controller: AccelController,
+    steer_controller: SteerController,
 }
 
 #[derive(Debug, Clone)]
-pub struct Target {
+pub struct TargetRequest {
     pub steering_angle: f64,
     pub speed: f64,
     pub accel: f64,
-    pub jerk: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct Current {
-    pub time_sec: f64,
-    pub speed: f64,
-    pub accel: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct Status {
-    pub status: Option<StatusKind>,
-    pub accel_target: f64,
-    pub pedal_target: f64,
 }
 
 #[derive(Debug, Clone)]
 pub struct Report {
-    pub status: StatusKind,
-    pub accel_target: f64,
-    pub pedal_target: f64,
-    pub accel_delta: f64,
-    pub pedal_delta: f64,
+    pub status: Status,
+    pub setpoint_accel: f64,
+    pub target_pedal: f64,
+    pub delta_accel: f64,
+    pub delta_pedal: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -56,26 +68,45 @@ pub struct Output {
     pub hand_brake: bool,
 }
 
+#[derive(Debug, Clone)]
+struct Measurement {
+    pub time_sec: f64,
+    pub speed: f64,
+    pub accel: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StatusKind {
+pub enum Status {
     FullStop,
     Accelerating,
     Coasting,
     Braking,
 }
 
-impl Default for Target {
-    fn default() -> Self {
-        Self {
-            steering_angle: 0.0,
-            speed: 0.0,
-            accel: 0.0,
-            jerk: 0.0,
-        }
+impl Measurement {
+    pub fn update(&mut self, time_delta_sec: f64, current_speed: f64) {
+        let speed_delta = current_speed - self.speed;
+        let current_accel = speed_delta / time_delta_sec;
+        let time_sec = self.time_sec + time_delta_sec;
+        let is_full_stop = current_speed < FULL_STOP_SPEED_MS;
+
+        *self = if is_full_stop {
+            Measurement {
+                time_sec,
+                speed: 0.0,
+                accel: 0.0,
+            }
+        } else {
+            Measurement {
+                time_sec,
+                speed: current_speed,
+                accel: current_accel,
+            }
+        };
     }
 }
 
-impl Default for Current {
+impl Default for Measurement {
     fn default() -> Self {
         Self {
             time_sec: 0.0,
@@ -85,200 +116,59 @@ impl Default for Current {
     }
 }
 
-impl Default for Status {
-    fn default() -> Self {
-        Self {
-            status: None,
-            accel_target: 0.0,
-            pedal_target: 0.0,
-        }
-    }
-}
-
-impl Default for Output {
-    fn default() -> Self {
-        Self {
-            throttle: 0.0,
-            brake: 1.0,
-            steer: 0.0,
-            reverse: false,
-            hand_brake: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Info {
-    target: Target,
-    restrictions: Restrictions,
-    current: Current,
-    status: Status,
-}
-
-#[derive(Debug)]
-pub struct Controller {
-    info: Info,
-    speed_pid: Pid<f64>,
-    accel_pid: Pid<f64>,
-    accel_activator: DelayedActivator,
-    physics_control: VehiclePhysicsControl,
-}
-
 impl Controller {
-    pub fn set_target(&mut self, target: Target) {
-        let Info {
-            restrictions:
-                Restrictions {
-                    max_steering_angle: max_steer,
-                    max_speed,
-                    max_accel,
-                    max_decel,
-                    ..
-                },
-            target:
-                Target {
-                    steering_angle: target_steer,
-                    speed: target_speed,
-                    accel: target_accel,
-                    ..
-                },
-            ..
-        } = self.info;
-
-        let steering_angle = (-target_steer).clamp(-max_steer, max_steer);
-        let speed = target_speed.clamp(-max_speed, max_speed);
-        let speed_abs = speed.abs();
-        let accel = if speed_abs >= FULL_STOP_SPEED_MS {
-            target_accel.clamp(-max_decel, max_accel)
-        } else {
-            -max_decel
-        };
-
-        self.info.target = Target {
-            steering_angle,
-            speed,
-            accel,
-            ..target
-        };
+    pub fn set_target(&mut self, target: TargetRequest) {
+        self.steer_controller.set_target(target.steering_angle);
+        self.speed_controller.set_target(target.speed, target.accel);
     }
 
-    pub fn step(&mut self, time_delta_sec: f64, current_speed: f64, pitch_radians: f64) -> Output {
+    pub fn step(
+        &mut self,
+        time_delta_sec: f64,
+        current_speed: f64,
+        pitch_radians: f64,
+    ) -> (Output, Report) {
         assert!(time_delta_sec > 0.0);
 
         let Self {
-            info:
-                Info {
-                    target,
-                    restrictions,
-                    current: previous,
-                    status,
-                    ..
-                },
-            speed_pid,
-            accel_pid,
-            accel_activator,
+            measurement,
             physics_control,
+            speed_controller,
+            accel_controller,
+            steer_controller,
         } = self;
 
-        let current = {
-            let speed_delta = current_speed - previous.speed;
-            let current_accel = speed_delta / time_delta_sec;
+        // Save measurements
+        measurement.update(time_delta_sec, current_speed);
+        let is_full_stop = current_speed < FULL_STOP_SPEED_MS;
 
-            Current {
-                time_sec: previous.time_sec + time_delta_sec,
-                speed: current_speed,
-                accel: current_accel,
-            }
-        };
+        // Compute steer ratio
+        let steer = steer_controller.steer();
 
-        let speed_kind = SpeedKind::from_speed_ms(current.speed);
-        let reverse = target.speed < 0.0;
-        let steer = target.steering_angle / restrictions.max_steering_angle;
+        // Run speed controller
+        let SpeedControl {
+            setpoint_accel,
+            delta_accel,
+        } = speed_controller.step(current_speed);
 
-        let current = if speed_kind == SpeedKind::FullStop {
-            Current {
-                speed: 0.0,
-                accel: 0.0,
-                ..current
-            }
-        } else {
-            current
-        };
+        // Run acceleration controller
+        accel_controller.set_target_accel(setpoint_accel);
+        if is_full_stop {
+            accel_controller.reset_target_pedal();
+        }
+        let AccelControl {
+            pedal_target: target_pedal,
+            pedal_delta: delta_pedal,
+        } = accel_controller.step(measurement.accel);
 
-        let target = {
-            let target_speed = match speed_kind {
-                SpeedKind::FullStop => 0.0,
-                SpeedKind::StandStill => target.speed,
-                SpeedKind::Driving => {
-                    if current.speed.is_sign_positive() ^ target.speed.is_sign_positive() {
-                        0.0
-                    } else {
-                        target.speed
-                    }
-                }
-            };
-
-            Target {
-                speed: target_speed,
-                ..*target
-            }
-        };
-        let accel_target = {
-            let prev_target = if speed_kind == SpeedKind::FullStop {
-                0.0
-            } else {
-                status.accel_target
-            };
-
-            let target_accel_abs = target.accel.abs();
-            let is_inertial = target_accel_abs < INTERNAL_ACCEL_MS2;
-            let is_accel_triggered = !is_inertial && target_accel_abs >= restrictions.min_accel;
-
-            let is_speed_control_enabled = if is_accel_triggered {
-                accel_activator.inc()
-            } else {
-                accel_activator.dec();
-                false
-            };
-
-            if is_speed_control_enabled {
-                speed_pid.setpoint = target.speed.abs();
-                let delta = speed_pid.next_control_output(current.speed).output;
-
-                let (min_accel, max_accel) = if is_inertial {
-                    let Restrictions {
-                        max_decel,
-                        max_accel,
-                        ..
-                    } = *restrictions;
-                    (-max_decel, max_accel)
-                } else {
-                    (-target_accel_abs, target_accel_abs)
-                };
-
-                (prev_target + delta).clamp(min_accel, max_accel)
-            } else {
-                target.accel
-            }
-        };
-        let pedal_target = {
-            let prev_target = if speed_kind == SpeedKind::FullStop {
-                0.0
-            } else {
-                status.pedal_target
-            };
-            accel_pid.setpoint = accel_target;
-            let delta = accel_pid.next_control_output(current.accel).output;
-            let max_pedal = restrictions.max_pedal;
-            (prev_target + delta).clamp(-max_pedal, max_pedal)
-        };
-
-        let physics = VehiclePhysics::new(physics_control, current.speed, pitch_radians, reverse);
+        let reverse = speed_controller.target_speed() < 0.0;
+        let physics =
+            VehiclePhysics::new(physics_control, measurement.speed, pitch_radians, reverse);
         let throttle_lower_border = physics.driving_impedance_acceleration;
         let brake_upper_border = throttle_lower_border + physics.lay_off_engine_acceleration;
 
-        let (status_kind, output) = if speed_kind == SpeedKind::FullStop {
-            let kind = StatusKind::FullStop;
+        let (status_kind, output) = if is_full_stop {
+            let kind = Status::FullStop;
             let output = Output {
                 hand_brake: true,
                 steer,
@@ -287,9 +177,9 @@ impl Controller {
                 throttle: 0.0,
             };
             (kind, output)
-        } else if pedal_target > throttle_lower_border {
-            let kind = StatusKind::Accelerating;
-            let throttle = (pedal_target - throttle_lower_border) / restrictions.max_pedal;
+        } else if target_pedal > throttle_lower_border {
+            let kind = Status::Accelerating;
+            let throttle = (target_pedal - throttle_lower_border) / accel_controller.max_pedal();
             let output = Output {
                 hand_brake: false,
                 steer,
@@ -298,8 +188,8 @@ impl Controller {
                 throttle,
             };
             (kind, output)
-        } else if pedal_target > brake_upper_border {
-            let kind = StatusKind::Coasting;
+        } else if target_pedal > brake_upper_border {
+            let kind = Status::Coasting;
             let output = Output {
                 hand_brake: false,
                 steer,
@@ -309,8 +199,8 @@ impl Controller {
             };
             (kind, output)
         } else {
-            let kind = StatusKind::Braking;
-            let brake = (brake_upper_border - pedal_target) / restrictions.max_pedal;
+            let kind = Status::Braking;
+            let brake = (brake_upper_border - target_pedal) / accel_controller.max_pedal();
             let output = Output {
                 hand_brake: false,
                 steer,
@@ -321,65 +211,14 @@ impl Controller {
             (kind, output)
         };
 
-        let status = Status {
-            status: Some(status_kind),
-            accel_target,
-            pedal_target,
+        let report = Report {
+            status: status_kind,
+            setpoint_accel,
+            target_pedal,
+            delta_accel,
+            delta_pedal,
         };
 
-        self.info = Info {
-            target,
-            status,
-            current,
-            ..self.info.clone()
-        };
-
-        output
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum SpeedKind {
-    FullStop,
-    StandStill,
-    Driving,
-}
-
-impl SpeedKind {
-    pub fn from_speed_ms(speed_ms: f64) -> Self {
-        let speed_ms = speed_ms.abs();
-
-        if speed_ms < FULL_STOP_SPEED_MS {
-            Self::FullStop
-        } else if speed_ms < STAND_STILL_SPEED_MS {
-            Self::StandStill
-        } else {
-            Self::Driving
-        }
-    }
-}
-
-#[derive(Debug)]
-struct DelayedActivator {
-    max: usize,
-    cur: usize,
-}
-
-impl DelayedActivator {
-    pub fn new(max: usize) -> Self {
-        Self { max, cur: 0 }
-    }
-
-    pub fn inc(&mut self) -> bool {
-        let Self { max, cur } = *self;
-        let next = if max == cur { max } else { cur + 1 };
-        self.cur = next;
-        next == max
-    }
-
-    pub fn dec(&mut self) {
-        if let Some(next) = self.cur.checked_sub(1) {
-            self.cur = next;
-        }
+        (output, report)
     }
 }
