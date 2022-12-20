@@ -9,24 +9,40 @@ use carla::rpc::VehiclePhysicsControl;
 
 #[derive(Debug, Clone)]
 pub struct VehicleControllerInit {
-    pub physics_control: VehiclePhysicsControl,
+    pub physics: VehiclePhysics,
     pub speed_controller: SpeedControllerInit,
     pub accel_controller: AccelControllerInit,
     pub max_steering_angle: f64,
 }
 
 impl VehicleControllerInit {
-    pub fn build(&self) -> VehicleController {
+    pub fn from_physics_control(
+        physics_control: &VehiclePhysicsControl,
+        min_accel: Option<f64>,
+    ) -> Self {
+        Self::from_physics(VehiclePhysics::new(physics_control), min_accel)
+    }
+
+    pub fn from_physics(physics: VehiclePhysics, min_accel: Option<f64>) -> Self {
+        Self {
+            speed_controller: SpeedControllerInit::from_physics(&physics, min_accel),
+            accel_controller: AccelControllerInit::from_physics(&physics),
+            max_steering_angle: physics.max_steering_angle(),
+            physics,
+        }
+    }
+
+    pub fn build(self) -> VehicleController {
         let Self {
-            ref physics_control,
-            ref speed_controller,
-            ref accel_controller,
+            physics,
+            speed_controller,
+            accel_controller,
             max_steering_angle,
-        } = *self;
+        } = self;
 
         VehicleController {
             measurement: Measurement::default(),
-            physics: VehiclePhysics::new(physics_control),
+            physics,
             speed_controller: speed_controller.build(),
             accel_controller: accel_controller.build(),
             steer_controller: SteerController::new(max_steering_angle),
