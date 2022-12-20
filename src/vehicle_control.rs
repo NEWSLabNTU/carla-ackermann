@@ -133,6 +133,23 @@ impl Default for Measurement {
 }
 
 impl VehicleController {
+    pub fn from_physics_control(
+        physics_control: &VehiclePhysicsControl,
+        min_accel: Option<f64>,
+    ) -> Self {
+        Self::from_physics(VehiclePhysics::new(physics_control), min_accel)
+    }
+
+    pub fn from_physics(physics: VehiclePhysics, min_accel: Option<f64>) -> Self {
+        VehicleControllerInit {
+            speed_controller: SpeedControllerInit::from_physics(&physics, min_accel),
+            accel_controller: AccelControllerInit::from_physics(&physics),
+            max_steering_angle: physics.max_steering_angle(),
+            physics,
+        }
+        .build()
+    }
+
     pub fn set_target(&mut self, target: TargetRequest) {
         let TargetRequest {
             steering_angle,
