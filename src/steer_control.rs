@@ -23,7 +23,7 @@ impl SteerController {
         self.target_steering_angle = target_steering_angle.clamp(-max, max);
     }
 
-    pub fn steer(&self) -> f64 {
+    pub fn steer_ratio(&self) -> f64 {
         self.target_steering_angle / self.max_steering_angle
     }
 }

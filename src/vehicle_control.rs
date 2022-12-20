@@ -118,8 +118,13 @@ impl Default for Measurement {
 
 impl VehicleController {
     pub fn set_target(&mut self, target: TargetRequest) {
-        self.steer_controller.set_target(target.steering_angle);
-        self.speed_controller.set_target(target.speed, target.accel);
+        let TargetRequest {
+            steering_angle,
+            speed,
+            accel,
+        } = target;
+        self.steer_controller.set_target(steering_angle);
+        self.speed_controller.set_target(speed, accel);
     }
 
     pub fn step(
@@ -143,7 +148,7 @@ impl VehicleController {
         let is_full_stop = current_speed < FULL_STOP_SPEED_MS;
 
         // Compute steer ratio
-        let steer = steer_controller.steer();
+        let steer = steer_controller.steer_ratio();
 
         // Run speed controller
         let SpeedControl {
