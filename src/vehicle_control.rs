@@ -8,15 +8,15 @@ use crate::{
 use carla::rpc::VehiclePhysicsControl;
 
 #[derive(Debug, Clone)]
-pub struct ControllerInit {
+pub struct VehicleControllerInit {
     pub physics_control: VehiclePhysicsControl,
     pub speed_controller: SpeedControllerInit,
     pub accel_controller: AccelControllerInit,
     pub max_steering_angle: f64,
 }
 
-impl ControllerInit {
-    pub fn build(&self) -> Controller {
+impl VehicleControllerInit {
+    pub fn build(&self) -> VehicleController {
         let Self {
             ref physics_control,
             ref speed_controller,
@@ -24,9 +24,9 @@ impl ControllerInit {
             max_steering_angle,
         } = *self;
 
-        Controller {
+        VehicleController {
             measurement: Measurement::default(),
-            physics_control: physics_control.clone(),
+            physics: VehiclePhysics::new(physics_control),
             speed_controller: speed_controller.build(),
             accel_controller: accel_controller.build(),
             steer_controller: SteerController::new(max_steering_angle),
@@ -35,9 +35,9 @@ impl ControllerInit {
 }
 
 #[derive(Debug)]
-pub struct Controller {
+pub struct VehicleController {
     measurement: Measurement,
-    physics_control: VehiclePhysicsControl,
+    physics: VehiclePhysics,
     speed_controller: SpeedController,
     accel_controller: AccelController,
     steer_controller: SteerController,
@@ -116,7 +116,7 @@ impl Default for Measurement {
     }
 }
 
-impl Controller {
+impl VehicleController {
     pub fn set_target(&mut self, target: TargetRequest) {
         self.steer_controller.set_target(target.steering_angle);
         self.speed_controller.set_target(target.speed, target.accel);
@@ -132,7 +132,7 @@ impl Controller {
 
         let Self {
             measurement,
-            physics_control,
+            physics,
             speed_controller,
             accel_controller,
             steer_controller,
@@ -162,10 +162,9 @@ impl Controller {
         } = accel_controller.step(measurement.accel);
 
         let reverse = speed_controller.target_speed() < 0.0;
-        let physics =
-            VehiclePhysics::new(physics_control, measurement.speed, pitch_radians, reverse);
-        let throttle_lower_border = physics.driving_impedance_acceleration;
-        let brake_upper_border = throttle_lower_border + physics.lay_off_engine_acceleration;
+        let throttle_lower_border =
+            physics.driving_impedance_acceleration(measurement.speed, pitch_radians, reverse);
+        let brake_upper_border = throttle_lower_border + physics.lay_off_engine_acceleration();
 
         let (status_kind, output) = if is_full_stop {
             let kind = Status::FullStop;

@@ -23,10 +23,10 @@ impl SpeedControllerInit {
                 kd: 0.5,
                 output_limit: 1.0,
             },
-            max_speed: physics.max_speed,
-            max_accel: physics.max_accel,
+            max_speed: physics.max_speed(),
+            max_accel: physics.max_accel(),
             min_accel: min_accel.unwrap_or(1.0),
-            max_decel: physics.max_deceleration,
+            max_decel: physics.max_deceleration(),
         }
     }
 

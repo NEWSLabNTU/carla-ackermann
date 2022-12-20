@@ -9,12 +9,6 @@ pub struct AccelControllerInit {
 
 impl AccelControllerInit {
     pub fn from_physics(physics: &VehiclePhysics) -> Self {
-        let VehiclePhysics {
-            max_accel,
-            max_deceleration,
-            ..
-        } = *physics;
-
         Self {
             pid: PidInit {
                 kp: 0.05,
@@ -22,7 +16,7 @@ impl AccelControllerInit {
                 kd: 0.05,
                 output_limit: 1.0,
             },
-            max_pedal: max_accel.min(max_deceleration),
+            max_pedal: physics.max_accel().min(physics.max_deceleration()),
         }
     }
 

@@ -8,7 +8,7 @@ pub struct SteerController {
 
 impl SteerController {
     pub fn from_physics(physics: &VehiclePhysics) -> Self {
-        Self::new(physics.max_steering_angle)
+        Self::new(physics.max_steering_angle())
     }
 
     pub fn new(max_steering_angle: f64) -> Self {
