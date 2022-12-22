@@ -72,7 +72,7 @@ pub struct Report {
     pub setpoint_accel: f64,
     pub target_pedal: f64,
     pub delta_accel: f64,
-    pub delta_pedal: f64,
+    pub pedal_delta: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -178,7 +178,6 @@ impl VehicleController {
 
         // Save measurements
         measurement.update(time_delta_sec, current_speed);
-        let is_full_stop = current_speed < FULL_STOP_SPEED_MS;
 
         // Compute steer ratio
         let steer = steer_controller.steer_ratio();
@@ -187,16 +186,17 @@ impl VehicleController {
         let SpeedControl {
             setpoint_accel,
             delta_accel,
+            full_stop,
         } = speed_controller.step(current_speed);
 
         // Run acceleration controller
         accel_controller.set_target_accel(setpoint_accel);
-        if is_full_stop {
+        if full_stop {
             accel_controller.reset_target_pedal();
         }
         let AccelControl {
-            pedal_target: target_pedal,
-            pedal_delta: delta_pedal,
+            target_pedal,
+            pedal_delta,
         } = accel_controller.step(measurement.accel);
 
         let reverse = speed_controller.target_speed() < 0.0;
@@ -204,7 +204,7 @@ impl VehicleController {
             physics.driving_impedance_acceleration(measurement.speed, pitch_radians, reverse);
         let brake_upper_border = throttle_lower_border + physics.lay_off_engine_acceleration();
 
-        let (status_kind, output) = if is_full_stop {
+        let (status_kind, output) = if full_stop {
             let kind = Status::FullStop;
             let output = Output {
                 hand_brake: true,
@@ -253,7 +253,7 @@ impl VehicleController {
             setpoint_accel,
             target_pedal,
             delta_accel,
-            delta_pedal,
+            pedal_delta,
         };
 
         (output, report)

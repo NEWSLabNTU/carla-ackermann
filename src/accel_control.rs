@@ -48,11 +48,7 @@ impl AccelController {
         self.target_pedal = 0.0;
     }
 
-    pub fn step(
-        &mut self,
-        current_accel: f64,
-        // is_full_stop: bool,
-    ) -> AccelControl {
+    pub fn step(&mut self, current_accel: f64) -> AccelControl {
         let Self {
             ref mut accel_pid,
             target_pedal: prev_target_pedal,
@@ -66,7 +62,7 @@ impl AccelController {
         self.target_pedal = curr_pedal_target;
 
         AccelControl {
-            pedal_target: curr_pedal_target,
+            target_pedal: curr_pedal_target,
             pedal_delta,
         }
     }
@@ -77,6 +73,6 @@ impl AccelController {
 }
 
 pub struct AccelControl {
-    pub pedal_target: f64,
+    pub target_pedal: f64,
     pub pedal_delta: f64,
 }

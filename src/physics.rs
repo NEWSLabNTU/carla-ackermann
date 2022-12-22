@@ -1,3 +1,4 @@
+use crate::constants::DEFAULT_MAX_STEERING_DEGREES;
 use carla::rpc::VehiclePhysicsControl;
 use noisy_float::types::r64;
 
@@ -30,9 +31,9 @@ impl VehiclePhysics {
         let max_steering_angle = wheels
             .iter()
             .map(|wheel| r64(wheel.max_steer_angle as f64))
-            .min()
-            .map(|min| min.raw())
-            .unwrap_or_else(|| 70f64.to_radians());
+            .max()
+            .map(|val| val.raw())
+            .unwrap_or_else(|| DEFAULT_MAX_STEERING_DEGREES.to_radians());
         let max_speed = 180.0 / 3.6;
         let max_accel = 3.0;
         let max_deceleration = 8.0;

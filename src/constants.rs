@@ -1,3 +1,4 @@
 pub const STAND_STILL_SPEED_MS: f64 = 0.1;
 pub const FULL_STOP_SPEED_MS: f64 = 0.00001;
 pub const INTERNAL_ACCEL_MS2: f64 = 0.00001;
+pub const DEFAULT_MAX_STEERING_DEGREES: f64 = 70.0;

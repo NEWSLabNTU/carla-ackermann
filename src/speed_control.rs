@@ -90,22 +90,23 @@ impl SpeedController {
     pub fn step(&mut self, current_speed: f64) -> SpeedControl {
         let Self {
             ref mut speed_pid,
-            ref mut accel_activator,
+            // ref mut accel_activator,
             target_speed,
             target_accel,
-            min_accel,
+            // min_accel,
             max_accel,
             max_decel,
             ..
         } = *self;
 
-        let speed_kind = SpeedKind::from_speed_ms(current_speed);
-        let is_full_stop = speed_kind == SpeedKind::FullStop;
+        let is_standing = current_speed.abs() < STAND_STILL_SPEED_MS;
+        let is_stopping = target_speed.abs() < FULL_STOP_SPEED_MS;
+        let is_full_stop = is_standing && is_stopping;
 
-        let setpoint_speed = match speed_kind {
-            SpeedKind::FullStop => 0.0,
-            SpeedKind::StandStill => target_speed,
-            SpeedKind::Driving => {
+        let setpoint_speed = match (is_standing, is_stopping) {
+            (true, true) => 0.0,
+            (true, false) => target_speed,
+            _ => {
                 if current_speed.is_sign_positive() ^ target_speed.is_sign_positive() {
                     0.0
                 } else {
@@ -116,16 +117,17 @@ impl SpeedController {
 
         let target_accel_abs = target_accel.abs();
         let is_inertial = target_accel_abs < INTERNAL_ACCEL_MS2;
-        let is_speed_control_enabled = {
-            let is_accel_triggered = !is_inertial && target_accel_abs >= min_accel;
+        // let is_speed_control_enabled = {
+        //     let is_accel_triggered = !is_inertial && target_accel_abs >= min_accel;
 
-            if is_accel_triggered {
-                accel_activator.inc()
-            } else {
-                accel_activator.dec();
-                false
-            }
-        };
+        //     if is_accel_triggered {
+        //         accel_activator.inc()
+        //     } else {
+        //         accel_activator.dec();
+        //         false
+        //     }
+        // };
+        let is_speed_control_enabled = true;
 
         let (setpoint_accel, delta_accel) = if is_speed_control_enabled {
             speed_pid.setpoint = setpoint_speed.abs();
@@ -147,6 +149,7 @@ impl SpeedController {
         SpeedControl {
             setpoint_accel,
             delta_accel,
+            full_stop: is_full_stop,
         }
     }
 }
@@ -154,6 +157,7 @@ impl SpeedController {
 pub struct SpeedControl {
     pub setpoint_accel: f64,
     pub delta_accel: f64,
+    pub full_stop: bool,
 }
 
 #[derive(Debug)]
@@ -177,27 +181,6 @@ impl DelayedActivator {
     pub fn dec(&mut self) {
         if let Some(next) = self.cur.checked_sub(1) {
             self.cur = next;
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum SpeedKind {
-    FullStop,
-    StandStill,
-    Driving,
-}
-
-impl SpeedKind {
-    pub fn from_speed_ms(speed_ms: f64) -> Self {
-        let speed_ms = speed_ms.abs();
-
-        if speed_ms < FULL_STOP_SPEED_MS {
-            Self::FullStop
-        } else if speed_ms < STAND_STILL_SPEED_MS {
-            Self::StandStill
-        } else {
-            Self::Driving
         }
     }
 }
