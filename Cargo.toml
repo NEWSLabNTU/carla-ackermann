@@ -9,3 +9,8 @@ edition = "2021"
 carla = "0.6.0"
 noisy_float = "0.2.0"
 pid = "3.0.0"
+
+[dev-dependencies]
+anyhow = "1.0.68"
+clap = { version = "4.0.32", features = ["derive"] }
+rand = "0.8.5"
