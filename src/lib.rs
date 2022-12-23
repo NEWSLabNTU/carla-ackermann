@@ -6,4 +6,6 @@ pub mod speed_control;
 pub mod steer_control;
 pub mod vehicle_control;
 
-pub use vehicle_control::{VehicleController, VehicleControllerInit};
+pub use vehicle_control::{
+    Output, Report, Status, TargetRequest, VehicleController, VehicleControllerInit,
+};

@@ -7,6 +7,7 @@ use crate::{
 };
 use carla::rpc::VehiclePhysicsControl;
 
+/// Initializer of [VehicleController].
 #[derive(Debug, Clone)]
 pub struct VehicleControllerInit {
     pub physics: VehiclePhysics,
@@ -50,6 +51,7 @@ impl VehicleControllerInit {
     }
 }
 
+/// A controller that controls the speed and steering of a vehicle.
 #[derive(Debug)]
 pub struct VehicleController {
     measurement: Measurement,
@@ -59,6 +61,7 @@ pub struct VehicleController {
     steer_controller: SteerController,
 }
 
+/// Desired target values passed to [VehicleController].
 #[derive(Debug, Clone)]
 pub struct TargetRequest {
     pub steering_angle: f64,
@@ -66,6 +69,7 @@ pub struct TargetRequest {
     pub accel: f64,
 }
 
+/// The report created by [VehicleController::step].
 #[derive(Debug, Clone)]
 pub struct Report {
     pub status: Status,
@@ -75,6 +79,7 @@ pub struct Report {
     pub pedal_delta: f64,
 }
 
+/// Output of [VehicleController::step].
 #[derive(Debug, Clone)]
 pub struct Output {
     pub throttle: f64,
@@ -91,6 +96,7 @@ struct Measurement {
     pub accel: f64,
 }
 
+/// The status reported by [VehicleController].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Status {
     FullStop,
@@ -133,6 +139,10 @@ impl Default for Measurement {
 }
 
 impl VehicleController {
+    /// Creates a controller from an [VehiclePhysicsControl] object.
+    ///
+    /// The `physics_control` can be created by
+    /// [vehicle.physics_control()](Vehicle::physics_control).
     pub fn from_physics_control(
         physics_control: &VehiclePhysicsControl,
         min_accel: Option<f64>,
@@ -140,6 +150,7 @@ impl VehicleController {
         Self::from_physics(VehiclePhysics::new(physics_control), min_accel)
     }
 
+    /// Creates a controller from an [VehiclePhysics] object.
     pub fn from_physics(physics: VehiclePhysics, min_accel: Option<f64>) -> Self {
         VehicleControllerInit {
             speed_controller: SpeedControllerInit::from_physics(&physics, min_accel),
@@ -150,6 +161,7 @@ impl VehicleController {
         .build()
     }
 
+    /// Set target values for the controller.
     pub fn set_target(&mut self, target: TargetRequest) {
         let TargetRequest {
             steering_angle,
@@ -160,6 +172,12 @@ impl VehicleController {
         self.speed_controller.set_target(speed, accel);
     }
 
+    /// Produces a controlling command.
+    ///
+    /// # Parameters
+    /// - `time_delta_sec` is elapsed seconds since last step.
+    /// - `current_speed` is the current speed of the car.
+    /// - `pitch_radians` is the current pitch angle of the car.
     pub fn step(
         &mut self,
         time_delta_sec: f64,
