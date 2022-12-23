@@ -2,8 +2,13 @@
 name = "carla-ackermann"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["jerry73204 <jerry73204@gmail.com>"]
+description = "Vehicle controller for Carla simulator"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/NEWSLabNTU/carla-ackermann"
+repository = "https://github.com/NEWSLabNTU/carla-ackermann"
+documentation = "https://docs.rs/carla-ackermann/"
 
 [dependencies]
 carla = "0.6.0"
