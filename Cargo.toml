@@ -19,3 +19,10 @@ pid = "3.0.0"
 anyhow = "1.0.68"
 clap = { version = "4.0.32", features = ["derive"] }
 rand = "0.8.5"
+
+[features]
+docs-only = ["carla/docs-only"]
+
+[package.metadata.docs.rs]
+no-default-features = true
+features = ["docs-only"]
